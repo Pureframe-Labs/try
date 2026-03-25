@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-bot",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch index.ts",
+    "start": "bun run dist/index.js",
+    "build": "bun build index.ts --outdir dist --target bun",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.3",
+    "amqplib": "^0.10.3",
+    "dotenv": "^16.3.1",
+    "hono": "^4.0.0",
+    "postgres": "^3.4.4",
+    "puppeteer": "^24.37.2",
+    "puppeteer-core": "^24.37.2",
+    "razorpay": "^2.9.2"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.4",
+    "@types/bun": "latest",
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2"
+  }
+}
