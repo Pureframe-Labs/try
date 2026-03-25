@@ -22,7 +22,7 @@ import { logger } from '../utils/logger'
 import fs from 'fs'
 import path from 'path'
 import * as amqp from 'amqplib'
-import menuData from '../../data/output.json'
+import menuData from '../data/output.json'
 import { formatAsTable } from '../utils/helpers'
 
 // Interfaces for Menu Data Structure (District/Taluka/Village)
