@@ -24,15 +24,21 @@ const DB_USER = process.env.DB_USER
 const DB_PASSWORD = process.env.DB_PASSWORD
 const DATABASE_URL = process.env.DATABASE_URL
 
+// Database connection validation
+const connectionString = DATABASE_URL || `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`
+
+if (!DATABASE_URL && (!DB_HOST || !DB_PORT || !DB_NAME || !DB_USER || !DB_PASSWORD)) {
+  console.error('❌ FATAL: Database configuration is incomplete.')
+  console.error('   Please provide DATABASE_URL or all DB_* variables in your .env file.')
+  // We don't exit here to allow the app to potentially start other services, 
+  // but individual queries will fail gracefully.
+}
+
 /**
  * PostgreSQL Client Instance.
- * - Prioritizes `DATABASE_URL` if provided.
- * - Falls back to individual credentials.
- * - Configured with connection pooling (max 10) for efficiency.
  */
 export const sql = postgres(
-  DATABASE_URL ||
-  `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`,
+  connectionString,
   {
     onnotice: () => { }, // Suppress notice logs
     connect_timeout: 30, // 30s connection timeout
