@@ -270,6 +270,8 @@ class WhatsAppService {
 
       if (!response.ok) {
         const err = await response.text()
+        logger.error(`❌ WhatsApp API Error (List): ${response.status} ${err}`)
+        logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
         throw new Error(`WhatsApp API Error (List): ${response.status} ${err}`)
       }
       logger.info(`📤 Outgoing Info: List Message sent to ${normalizedTo} | Button: ${buttonText}`)
@@ -328,6 +330,8 @@ class WhatsAppService {
 
       if (!response.ok) {
         const err = await response.text()
+        logger.error(`❌ WhatsApp API Error (Buttons): ${response.status} ${err}`)
+        logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
         throw new Error(`WhatsApp API Error (Buttons): ${response.status} ${err}`)
       }
       logger.info(`📤 Outgoing Info: Reply Buttons sent to ${normalizedTo} | Count: ${buttons.length}`)
