@@ -1,9 +1,9 @@
 import { logger } from '../utils/logger'
 
 class WhatsAppService {
-  private baseUrl = process.env.BASE_URL || ''
+  private baseUrl = process.env.BASE_URL || 'https://graph.facebook.com/v21.0'
   private phoneNumberId = process.env.PHONE_NUMBER_ID || ''
-  private apiKey = process.env.API_KEY || ''
+  private apiKey = process.env.API_KEY || process.env.WHATSAPP_ACCESS_TOKEN || ''
 
   getStatus() {
     return {

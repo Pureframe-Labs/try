@@ -54,7 +54,8 @@ let connection: any = null  // Use 'any' to avoid type issues
 async function initRabbitMQWithRetry() {
   while (!channel) {
     try {
-      connection = await amqp.connect('amqp://localhost')
+      const mqUrl = process.env.RABBITMQ_URL || 'amqp://localhost'
+      connection = await amqp.connect(mqUrl)
 
       connection.on('close', () => {
         console.log('⚠️  RabbitMQ connection closed. Reconnecting...')
