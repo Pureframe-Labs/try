@@ -1,212 +1,91 @@
 import { logger } from '../utils/logger'
+import fs from 'fs/promises'
+import path from 'path'
+
+// ─── Build shared headers ONCE at module load ─────────────────────────────────
+// Avoids rebuilding the same object on every single API call.
+
+function buildHeaders(): Record<string, string> {
+  const apiKey = process.env.API_KEY || process.env.WHATSAPP_ACCESS_TOKEN || ''
+  return {
+    'Content-Type': 'application/json',
+    'api-key': apiKey,
+  }
+}
+
+function buildBearerHeaders(): Record<string, string> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN || ''
+  return { Authorization: `Bearer ${token}` }
+}
+
+// Lazily initialised so env is guaranteed to be loaded
+let _headers: Record<string, string> | null = null
+let _bearerHeaders: Record<string, string> | null = null
+
+function getHeaders(): Record<string, string> {
+  if (!_headers) _headers = buildHeaders()
+  return _headers
+}
+
+function getBearerHeaders(): Record<string, string> {
+  if (!_bearerHeaders) _bearerHeaders = buildBearerHeaders()
+  return _bearerHeaders
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalize(to: string): string {
+  return to.replace('@c.us', '')
+}
+
+function getApiUrl(): string {
+  const base = process.env.BASE_URL || 'https://graph.facebook.com/v21.0'
+  const phoneId = process.env.PHONE_NUMBER_ID || ''
+  return `${base}/${phoneId}/messages`
+}
+
+// ─── WhatsAppService ──────────────────────────────────────────────────────────
 
 class WhatsAppService {
-  private baseUrl = process.env.BASE_URL || 'https://graph.facebook.com/v21.0'
-  private phoneNumberId = process.env.PHONE_NUMBER_ID || ''
-  private apiKey = process.env.API_KEY || process.env.WHATSAPP_ACCESS_TOKEN || ''
 
   getStatus() {
-    return {
-      isReady: true,
-      qrCode: null,
-      initializationInProgress: false
-    }
+    return { isReady: true, qrCode: null, initializationInProgress: false }
   }
 
-  /**
-   * Send WhatsApp text message using 2Factor API
-   */
+  // ── Text message ────────────────────────────────────────────────────────────
+
   async sendMessage(to: string, text: string): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
-
-    // Normalize phone number (remove @c.us if passed)
-    const normalizedTo = to.replace('@c.us', '')
-
+    const normalizedTo = normalize(to)
     const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to: normalizedTo,
-      type: "text",
-      text: { body: text }
+      type: 'text',
+      text: { body: text },
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(getApiUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify(payload)
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        throw new Error(`WhatsApp API Error: ${response.status} ${response.statusText}`)
+        const err = await response.text().catch(() => response.statusText)
+        throw new Error(`WhatsApp API ${response.status}: ${err}`)
       }
 
-      logger.info(`📤 Outgoing Info: Text sent to ${normalizedTo} | Content: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
+      logger.info(`📤 Text → ${normalizedTo} | "${text.substring(0, 50)}${text.length > 50 ? '…' : ''}"`)
       return true
     } catch (error: any) {
-      logger.error(`❌ Critical error sending message to ${to}:`, error.message)
+      logger.error(`❌ sendMessage to ${normalizedTo}:`, error.message)
       return false
     }
   }
 
-  /**
-   * Send payment link as interactive button using 2Factor API
-   */
-  async sendPaymentLink(
-    to: string,
-    orderId: string,
-    amount: number,
-    serviceName: string
-  ): Promise<boolean> {
-    const publicUrl = process.env.NGROK_BASE_URL || process.env.BACKEND_URL || 'http://localhost:3000';
-    const paymentUrl = `${publicUrl}/payment/checkout?orderId=${orderId}`;
-    const amountInRupees = Number(amount) || 0;
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
-    const normalizedTo = to.replace('@c.us', '');
+  // ── Interactive list ────────────────────────────────────────────────────────
 
-    const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: normalizedTo,
-      type: "interactive",
-      interactive: {
-        type: "cta_url",
-        header: {
-          type: "text",
-          text: "Secure Payment"
-        },
-        body: {
-          text: `💳 *Payment Required*\n📄 ${serviceName}\n💰 ₹${amountInRupees.toFixed(2)}\n🆔 ${orderId}\n\n⏳ Please complete within 10 mins. PDF is delivered automatically after payment.`
-        },
-        action: {
-          name: "cta_url",
-          parameters: {
-            display_text: " Pay Now",
-            url: paymentUrl
-          }
-        }
-      }
-    };
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        logger.error(`❌ WhatsApp API Error (${response.status}):`, JSON.stringify(errorData));
-
-        // Fallback: If interactive fails, send a plain text link
-        return await this.sendMessage(to, `💳 *Payment Link:*\n${paymentUrl}\n\n📄 Service: ${serviceName}\n💰 Amount: ₹${amountInRupees}`);
-      }
-
-      logger.info(`📤 Payment link button sent to ${normalizedTo}`);
-      return true;
-    } catch (error: any) {
-      logger.error(`❌ Error sending payment link to ${to}:`, error.message);
-      // Last resort fallback
-      return await this.sendMessage(to, `💳 *Payment Link:*\n${paymentUrl}`);
-    }
-  }
-
-  /**
-   * Send an image message via 2Factor API
-   */
-  async sendImage(to: string, imageUrl: string, caption?: string): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
-    const normalizedTo = to.replace('@c.us', '')
-    const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: normalizedTo,
-      type: "image",
-      image: {
-        link: imageUrl,
-        caption: caption || ''
-      }
-    }
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'api-key': this.apiKey },
-        body: JSON.stringify(payload)
-      })
-      if (!response.ok) throw new Error(`WhatsApp API Error sending image: ${response.status}`)
-      logger.info(`📤 Image sent to ${normalizedTo}`)
-      return true
-    } catch (error: any) {
-      logger.error(`❌ Error sending image to ${to}:`, error.message)
-      return false
-    }
-  }
-
-  /**
-   * Send document via link using 2Factor API
-   */
-  async sendDocument(
-    to: string,
-    filePath: string,
-    filename: string,
-    caption?: string
-  ): Promise<boolean> {
-    try {
-      const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
-      const normalizedTo = to.replace('@c.us', '')
-
-      const ngrokBase = process.env.NGROK_BASE_URL || process.env.BASE_URL || 'http://localhost:3000'
-      let docUrl = ''
-
-      // Map local directory to static URL path
-      if (filePath.includes('satBara')) docUrl = `${ngrokBase}/files/satBara/${filename}`
-      else if (filePath.includes('8a')) docUrl = `${ngrokBase}/files/8a/${filename}`
-      else if (filePath.includes('ferFar')) docUrl = `${ngrokBase}/files/ferFar/${filename}`
-      else if (filePath.includes('propertyCard')) docUrl = `${ngrokBase}/files/propertyCard/${filename}`
-      else docUrl = `${ngrokBase}/files/docs/${filename}`
-
-      const payload = {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: normalizedTo,
-        type: "document",
-        document: {
-          link: docUrl,
-          filename: filename,
-          caption: caption || ''
-        }
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify(payload)
-      })
-
-      if (!response.ok) {
-        throw new Error(`WhatsApp API Error sending document: ${response.status} ${response.statusText}`)
-      }
-
-      logger.info(`📤 Outgoing Info: Document sent to ${normalizedTo} | File: ${filename}`)
-      return true
-    } catch (error: any) {
-      logger.error(`❌ Error sending document to ${to}:`, error.message)
-      return false
-    }
-  }
-  /**
-   * Send WhatsApp List message (Interactive)
-   */
   async sendListMessage(
     to: string,
     body: string,
@@ -215,160 +94,234 @@ class WhatsAppService {
     header?: string,
     footer?: string
   ): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
-    const normalizedTo = to.replace('@c.us', '')
-
+    const normalizedTo = normalize(to)
     const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to: normalizedTo,
-      type: "interactive",
+      type: 'interactive',
       interactive: {
-        type: "list",
-        header: header ? { type: "text", text: header } : undefined,
+        type: 'list',
+        ...(header ? { header: { type: 'text', text: header } } : {}),
         body: { text: body },
-        footer: footer ? { text: footer } : undefined,
-        action: {
-          button: buttonText,
-          sections: sections
-        }
-      }
+        ...(footer ? { footer: { text: footer } } : {}),
+        action: { button: buttonText, sections },
+      },
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(getApiUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify(payload)
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`WhatsApp API Error (List): ${response.status} ${err}`)
+        const err = await response.text().catch(() => response.statusText)
+        throw new Error(`WhatsApp List API ${response.status}: ${err}`)
       }
-      logger.info(`📤 Outgoing Info: List Message sent to ${normalizedTo} | Button: ${buttonText}`)
+
+      logger.info(`📤 List → ${normalizedTo} | "${buttonText}"`)
       return true
     } catch (error: any) {
-      logger.error(`❌ Error sending list message to ${to}:`, error.message)
+      logger.error(`❌ sendListMessage to ${normalizedTo}:`, error.message)
       return false
     }
   }
 
-  /**
-   * Send WhatsApp Reply Buttons (Interactive - max 3 buttons)
-   */
+  // ── Reply buttons ───────────────────────────────────────────────────────────
+
   async sendReplyButtons(
     to: string,
     body: string,
-    buttons: { id: string, title: string }[],
+    buttons: { id: string; title: string }[],
     header?: string,
     footer?: string
   ): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
-    const normalizedTo = to.replace('@c.us', '')
-
+    const normalizedTo = normalize(to)
     const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to: normalizedTo,
-      type: "interactive",
+      type: 'interactive',
       interactive: {
-        type: "button",
-        header: header ? { type: "text", text: header } : undefined,
+        type: 'button',
+        ...(header ? { header: { type: 'text', text: header } } : {}),
         body: { text: body },
-        footer: footer ? { text: footer } : undefined,
+        ...(footer ? { footer: { text: footer } } : {}),
         action: {
-          buttons: buttons.map(b => ({
-            type: "reply",
-            reply: { id: b.id, title: b.title }
-          }))
-        }
-      }
+          buttons: buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+        },
+      },
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(getApiUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify(payload)
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`WhatsApp API Error (Buttons): ${response.status} ${err}`)
+        const err = await response.text().catch(() => response.statusText)
+        throw new Error(`WhatsApp Buttons API ${response.status}: ${err}`)
       }
-      logger.info(`📤 Outgoing Info: Reply Buttons sent to ${normalizedTo} | Count: ${buttons.length}`)
+
+      logger.info(`📤 Buttons (${buttons.length}) → ${normalizedTo}`)
       return true
     } catch (error: any) {
-      logger.error(`❌ Error sending reply buttons to ${to}:`, error.message)
+      logger.error(`❌ sendReplyButtons to ${normalizedTo}:`, error.message)
       return false
     }
   }
 
-  /**
-   * Get media download URL from media ID (Meta Graph API)
-   */
-  async getMediaUrl(mediaId: string): Promise<string | null> {
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
-    const url = `https://graph.facebook.com/v21.0/${mediaId}`
+  // ── Payment link (CTA URL) ──────────────────────────────────────────────────
+
+  async sendPaymentLink(to: string, orderId: string, amount: number, serviceName: string): Promise<boolean> {
+    const normalizedTo   = normalize(to)
+    const publicUrl      = process.env.NGROK_BASE_URL || process.env.BACKEND_URL || 'http://localhost:3000'
+    const paymentUrl     = `${publicUrl}/payment/checkout?orderId=${orderId}`
+    const amountInRupees = Number(amount) || 0
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedTo,
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        header: { type: 'text', text: 'Secure Payment' },
+        body: {
+          text: `💳 *Payment Required*\n📄 ${serviceName}\n💰 ₹${amountInRupees.toFixed(2)}\n🆔 ${orderId}\n\n⏳ Please complete within 10 mins. PDF is delivered automatically after payment.`,
+        },
+        action: {
+          name: 'cta_url',
+          parameters: { display_text: ' Pay Now', url: paymentUrl },
+        },
+      },
+    }
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+      const response = await fetch(getApiUrl(), {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`WhatsApp Media API Error: ${response.status} ${err}`)
+        const errorData = await response.json().catch(() => ({}))
+        logger.error(`❌ sendPaymentLink (${response.status}):`, JSON.stringify(errorData))
+        // Fallback to plain text link
+        return this.sendMessage(to, `💳 *Payment Link:*\n${paymentUrl}\n\n📄 Service: ${serviceName}\n💰 Amount: ₹${amountInRupees}`)
       }
 
+      logger.info(`📤 Payment link → ${normalizedTo}`)
+      return true
+    } catch (error: any) {
+      logger.error(`❌ sendPaymentLink to ${normalizedTo}:`, error.message)
+      return this.sendMessage(to, `💳 *Payment Link:*\n${paymentUrl}`)
+    }
+  }
+
+  // ── Image ───────────────────────────────────────────────────────────────────
+
+  async sendImage(to: string, imageUrl: string, caption?: string): Promise<boolean> {
+    const normalizedTo = normalize(to)
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedTo,
+      type: 'image',
+      image: { link: imageUrl, caption: caption || '' },
+    }
+
+    try {
+      const response = await fetch(getApiUrl(), {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) throw new Error(`WhatsApp Image API ${response.status}`)
+      logger.info(`📤 Image → ${normalizedTo}`)
+      return true
+    } catch (error: any) {
+      logger.error(`❌ sendImage to ${normalizedTo}:`, error.message)
+      return false
+    }
+  }
+
+  // ── Document ────────────────────────────────────────────────────────────────
+
+  async sendDocument(to: string, filePath: string, filename: string, caption?: string): Promise<boolean> {
+    const normalizedTo = normalize(to)
+    const ngrokBase    = process.env.NGROK_BASE_URL || process.env.BASE_URL || 'http://localhost:3000'
+
+    let docUrl: string
+    if      (filePath.includes('satBara'))      docUrl = `${ngrokBase}/files/satBara/${filename}`
+    else if (filePath.includes('8a'))           docUrl = `${ngrokBase}/files/8a/${filename}`
+    else if (filePath.includes('ferFar'))       docUrl = `${ngrokBase}/files/ferFar/${filename}`
+    else if (filePath.includes('propertyCard')) docUrl = `${ngrokBase}/files/propertyCard/${filename}`
+    else                                        docUrl = `${ngrokBase}/files/docs/${filename}`
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedTo,
+      type: 'document',
+      document: { link: docUrl, filename, caption: caption || '' },
+    }
+
+    try {
+      const response = await fetch(getApiUrl(), {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) throw new Error(`WhatsApp Document API ${response.status} ${response.statusText}`)
+      logger.info(`📤 Document "${filename}" → ${normalizedTo}`)
+      return true
+    } catch (error: any) {
+      logger.error(`❌ sendDocument to ${normalizedTo}:`, error.message)
+      return false
+    }
+  }
+
+  // ── Media helpers ───────────────────────────────────────────────────────────
+
+  async getMediaUrl(mediaId: string): Promise<string | null> {
+    const url = `https://graph.facebook.com/v21.0/${mediaId}`
+    try {
+      const response = await fetch(url, { headers: getBearerHeaders() })
+      if (!response.ok) {
+        const err = await response.text().catch(() => response.statusText)
+        throw new Error(`Media API ${response.status}: ${err}`)
+      }
       const data = await response.json() as { url: string }
       return data.url
     } catch (error: any) {
-      logger.error(`❌ Error fetching media URL for ID ${mediaId}:`, error.message)
+      logger.error(`❌ getMediaUrl ${mediaId}:`, error.message)
       return null
     }
   }
 
   /**
-   * Download media and save to local path
+   * Download media binary and write to `savePath`.
+   * `fs` and `path` are top-level imports — no dynamic import overhead.
    */
   async downloadMedia(mediaId: string, savePath: string): Promise<boolean> {
     const downloadUrl = await this.getMediaUrl(mediaId)
     if (!downloadUrl) return false
 
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
-
     try {
-      const response = await fetch(downloadUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`WhatsApp Media Download Error: ${response.status} ${response.statusText}`)
-      }
+      const response = await fetch(downloadUrl, { headers: getBearerHeaders() })
+      if (!response.ok) throw new Error(`Media Download ${response.status} ${response.statusText}`)
 
       const buffer = await response.arrayBuffer()
-      const fs = await import('fs/promises')
-      const path = await import('path')
-
-      // Ensure directory exists
       await fs.mkdir(path.dirname(savePath), { recursive: true })
       await fs.writeFile(savePath, Buffer.from(buffer))
-
       return true
     } catch (error: any) {
-      logger.error(`❌ Error downloading media ${mediaId}:`, error.message)
+      logger.error(`❌ downloadMedia ${mediaId}:`, error.message)
       return false
     }
   }
