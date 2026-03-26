@@ -97,10 +97,12 @@ initRabbitMQ();
 // -------------------------------------------------
 // REGISTER MODULAR ROUTES
 // -------------------------------------------------
+import diagRoutes from './routes/diag.routes';
 app.route('/webhook', webhookRoutes);
 app.route('/payment', paymentRoutes);
 app.route('/api', modulesRoutes);
 app.route('/test', testRoutes);
+app.route('/diag', diagRoutes);
 
 // -------------------------------------------------
 // FILE SERVING ENDPOINTS
