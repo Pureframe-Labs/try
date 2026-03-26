@@ -34,7 +34,7 @@ class WhatsAppService {
     }
 
     try {
-      logger.debug(`📤 Outgoing WhatsApp Text URL: ${url}`)
+      logger.info(`📤 Outgoing WhatsApp Text URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
