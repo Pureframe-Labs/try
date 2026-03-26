@@ -2,38 +2,33 @@
 FROM oven/bun:1.1-alpine AS base
 WORKDIR /app
 
-# --- Stage 2: Dependencies ---
+# --- Stage 2: Install (Fast Caching) ---
 FROM base AS install
-# Only copy package.json to avoid the lockfile version error
-COPY package.json ./
-RUN bun install --production
+# COPY the lockfile! This makes "bun install" nearly instant if deps haven't changed.
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile --production
 
 # --- Stage 3: Builder ---
 FROM base AS builder
-# Copy the node_modules from the previous stage
 COPY --from=install /app/node_modules ./node_modules
-# Copy all source files
 COPY . .
-
-# Build the app. Target 'bun' ensures it uses Bun's high-speed runtime.
-# We explicitly point to index.ts
-RUN bun build ./index.ts --outdir ./dist --target bun
+# Build to a single file
+RUN bun build ./index.ts --outfile ./dist/index.js --target bun
 
 # --- Stage 4: Production Runner ---
 FROM oven/bun:1.1-alpine AS runner
 WORKDIR /app
 
-# Only copy the final bundle and package info
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json .
+# Copy ONLY the compiled executable and necessary assets
+COPY --from=builder /app/dist/index.js ./index.js
 
-# Create the folders your Hono app expects for downloads
+# Create your specific app folders
 RUN mkdir -p downloads/property_card downloads/ferfar downloads/satBara
 
-# Ensure Railway uses the correct Port and Production optimizations
+# Production Env
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
 
-# Start the app using the bundled file
-CMD ["bun", "dist/index.js"]
+# Start directly from the compiled file
+CMD ["bun", "run", "index.js"]
