@@ -17,9 +17,12 @@ class WhatsAppService {
    * Send WhatsApp text message using 2Factor API
    */
   async sendMessage(to: string, text: string): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
+    if (!this.phoneNumberId) {
+      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing in environment variables')
+      return false
+    }
 
-    // Normalize phone number (remove @c.us if passed)
+    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
 
     const payload = {
@@ -35,7 +38,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': this.apiKey
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(payload)
       })
@@ -64,6 +67,11 @@ class WhatsAppService {
     const publicUrl = process.env.NGROK_BASE_URL || process.env.BACKEND_URL || 'http://localhost:3000';
     const paymentUrl = `${publicUrl}/payment/checkout?orderId=${orderId}`;
     const amountInRupees = Number(amount) || 0;
+    if (!this.phoneNumberId) {
+      logger.error(`❌ WhatsApp PHONE_NUMBER_ID missing for payment link`)
+      return false
+    }
+
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
     const normalizedTo = to.replace('@c.us', '');
 
@@ -96,7 +104,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': this.apiKey
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(payload)
       });
@@ -122,6 +130,10 @@ class WhatsAppService {
    * Send an image message via 2Factor API
    */
   async sendImage(to: string, imageUrl: string, caption?: string): Promise<boolean> {
+    if (!this.phoneNumberId) {
+      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for image')
+      return false
+    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
     const payload = {
@@ -137,7 +149,10 @@ class WhatsAppService {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'api-key': this.apiKey },
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${this.apiKey}` 
+        },
         body: JSON.stringify(payload)
       })
       if (!response.ok) throw new Error(`WhatsApp API Error sending image: ${response.status}`)
@@ -159,6 +174,10 @@ class WhatsAppService {
     caption?: string
   ): Promise<boolean> {
     try {
+      if (!this.phoneNumberId) {
+        logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for document')
+        return false
+      }
       const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
       const normalizedTo = to.replace('@c.us', '')
 
@@ -188,7 +207,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': this.apiKey
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(payload)
       })
@@ -215,6 +234,10 @@ class WhatsAppService {
     header?: string,
     footer?: string
   ): Promise<boolean> {
+    if (!this.phoneNumberId) {
+      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for list message')
+      return false
+    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
 
@@ -240,7 +263,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': this.apiKey
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(payload)
       })
@@ -267,6 +290,10 @@ class WhatsAppService {
     header?: string,
     footer?: string
   ): Promise<boolean> {
+    if (!this.phoneNumberId) {
+      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for reply buttons')
+      return false
+    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
 
@@ -294,7 +321,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': this.apiKey
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify(payload)
       })
