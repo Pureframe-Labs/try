@@ -34,6 +34,7 @@ class WhatsAppService {
     }
 
     try {
+      logger.debug(`📤 Outgoing WhatsApp Text URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -44,7 +45,9 @@ class WhatsAppService {
       })
 
       if (!response.ok) {
-        throw new Error(`WhatsApp API Error: ${response.status} ${response.statusText}`)
+        const err = await response.text()
+        logger.error(`❌ WhatsApp API Error: ${response.status} ${err}`)
+        throw new Error(`WhatsApp API Error: ${response.status} ${err}`)
       }
 
       logger.info(`📤 Outgoing Info: Text sent to ${normalizedTo} | Content: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
@@ -259,6 +262,7 @@ class WhatsAppService {
     }
 
     try {
+      logger.debug(`📤 Outgoing WhatsApp List URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -272,7 +276,19 @@ class WhatsAppService {
         const err = await response.text()
         logger.error(`❌ WhatsApp API Error (List): ${response.status} ${err}`)
         logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
-        throw new Error(`WhatsApp API Error (List): ${response.status} ${err}`)
+        
+        // AUTO-FALLBACK: If interactive fails, send as text menu
+        logger.info('🔄 Falling back to text-based menu...')
+        let fallbackText = `${header ? '*' + header + '*\n\n' : ''}${body}\n\n`
+        sections.forEach(sec => {
+          if (sec.title) fallbackText += `*${sec.title}*\n`
+          sec.rows.forEach((row: any, idx: number) => {
+            fallbackText += `${idx + 1}. ${row.title}\n`
+          })
+          fallbackText += '\n'
+        })
+        fallbackText += footer || ''
+        return await this.sendMessage(to, fallbackText)
       }
       logger.info(`📤 Outgoing Info: List Message sent to ${normalizedTo} | Button: ${buttonText}`)
       return true
@@ -319,6 +335,7 @@ class WhatsAppService {
     }
 
     try {
+      logger.debug(`📤 Outgoing WhatsApp Buttons URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -332,7 +349,14 @@ class WhatsAppService {
         const err = await response.text()
         logger.error(`❌ WhatsApp API Error (Buttons): ${response.status} ${err}`)
         logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
-        throw new Error(`WhatsApp API Error (Buttons): ${response.status} ${err}`)
+        
+        // FALLBACK to text
+        let fallbackText = `${header ? '*' + header + '*\n\n' : ''}${body}\n\n`
+        buttons.forEach((b, idx) => {
+          fallbackText += `${idx + 1}. ${b.title}\n`
+        })
+        fallbackText += `\n${footer || ''}`
+        return await this.sendMessage(to, fallbackText)
       }
       logger.info(`📤 Outgoing Info: Reply Buttons sent to ${normalizedTo} | Count: ${buttons.length}`)
       return true
