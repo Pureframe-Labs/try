@@ -4,35 +4,36 @@ WORKDIR /app
 
 # --- Stage 2: Dependencies ---
 FROM base AS install
-# CRITICAL FIX: Do NOT copy bun.lock or bun.lockb here.
-# This prevents the 'Unknown lockfile version' error.
+# Only copy package.json to avoid the lockfile version error
 COPY package.json ./
-
-# Bun will now generate its own fresh lockfile that it actually understands.
 RUN bun install --production
 
 # --- Stage 3: Builder ---
 FROM base AS builder
+# Copy the node_modules from the previous stage
 COPY --from=install /app/node_modules ./node_modules
+# Copy all source files
 COPY . .
 
-# We use index.tsx as per your previous code snippet
-RUN bun build ./index.tsx --outdir ./dist --target bun
+# Build the app. Target 'bun' ensures it uses Bun's high-speed runtime.
+# We explicitly point to index.ts
+RUN bun build ./index.ts --outdir ./dist --target bun
 
 # --- Stage 4: Production Runner ---
 FROM oven/bun:1.1-alpine AS runner
 WORKDIR /app
 
+# Only copy the final bundle and package info
 COPY --from=builder /app/dist ./dist
-# Re-add package.json just in case Hono needs it for metadata
 COPY --from=builder /app/package.json .
 
-# Setup directories
+# Create the folders your Hono app expects for downloads
 RUN mkdir -p downloads/property_card downloads/ferfar downloads/satBara
 
+# Ensure Railway uses the correct Port and Production optimizations
 ENV NODE_ENV=production
 ENV PORT=8080
-
 EXPOSE 8080
 
+# Start the app using the bundled file
 CMD ["bun", "dist/index.js"]
