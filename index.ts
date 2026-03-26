@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import amqp from 'amqplib';
-import { initializeDatabase, migrateSessionsTable } from './config/database.config';
+import { supabase } from './db';
 import { existsSync, mkdirSync } from 'fs';
 
 import webhookRoutes from './routes/webhook.routes';
@@ -72,20 +73,6 @@ async function initRabbitMQ() {
     }
 }
 
-// -------------------------------------------------
-// DATABASE INITIALIZATION
-// -------------------------------------------------
-async function initDatabase() {
-    try {
-        await initializeDatabase();
-        await migrateSessionsTable();
-        console.log("✅ Database Initialization Complete");
-    } catch (err: any) {
-        console.error("❌ Database Initialization Failed:", err.message || err);
-    }
-}
-
-initDatabase();
 initRabbitMQ();
 
 // Create download directories
@@ -97,12 +84,10 @@ initRabbitMQ();
 // -------------------------------------------------
 // REGISTER MODULAR ROUTES
 // -------------------------------------------------
-import diagRoutes from './routes/diag.routes';
 app.route('/webhook', webhookRoutes);
 app.route('/payment', paymentRoutes);
 app.route('/api', modulesRoutes);
 app.route('/test', testRoutes);
-app.route('/diag', diagRoutes);
 
 // -------------------------------------------------
 // FILE SERVING ENDPOINTS

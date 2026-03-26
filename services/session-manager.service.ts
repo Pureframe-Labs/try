@@ -319,20 +319,21 @@ class SessionManagerService {
    * Send welcome message
    */
   private async sendWelcomeMessage(phoneNumber: string): Promise<void> {
-    await whatsappService.sendListMessage(
+    await whatsappService.sendReplyButtons(
       phoneNumber,
       "🏛️ *Welcome to Land Records Bot*\n\nPlease select a service to continue:",
-      "Select Service",
       [
-        {
-          title: "Land Records",
-          rows: [
-            { id: "svc_7-12", title: "7/12 Form" },
-            { id: "svc_8a", title: "8A Form" },
-            { id: "svc_ferfar", title: "Ferfar" },
-            { id: "svc_property-card", title: "Property Card" }
-          ]
-        }
+        { id: "svc_7-12", title: "7/12 Form" },
+        { id: "svc_8a", title: "8A Form" }
+      ]
+    );
+
+    await whatsappService.sendReplyButtons(
+      phoneNumber,
+      "Choose more services:",
+      [
+        { id: "svc_ferfar", title: "Ferfar" },
+        { id: "svc_property-card", title: "Property Card" }
       ]
     );
   }

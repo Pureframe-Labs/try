@@ -17,12 +17,9 @@ class WhatsAppService {
    * Send WhatsApp text message using 2Factor API
    */
   async sendMessage(to: string, text: string): Promise<boolean> {
-    if (!this.phoneNumberId) {
-      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing in environment variables')
-      return false
-    }
-
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
+
+    // Normalize phone number (remove @c.us if passed)
     const normalizedTo = to.replace('@c.us', '')
 
     const payload = {
@@ -34,20 +31,17 @@ class WhatsAppService {
     }
 
     try {
-      logger.info(`📤 Outgoing WhatsApp Text URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
-        const err = await response.text()
-        logger.error(`❌ WhatsApp API Error: ${response.status} ${err}`)
-        throw new Error(`WhatsApp API Error: ${response.status} ${err}`)
+        throw new Error(`WhatsApp API Error: ${response.status} ${response.statusText}`)
       }
 
       logger.info(`📤 Outgoing Info: Text sent to ${normalizedTo} | Content: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
@@ -70,11 +64,6 @@ class WhatsAppService {
     const publicUrl = process.env.NGROK_BASE_URL || process.env.BACKEND_URL || 'http://localhost:3000';
     const paymentUrl = `${publicUrl}/payment/checkout?orderId=${orderId}`;
     const amountInRupees = Number(amount) || 0;
-    if (!this.phoneNumberId) {
-      logger.error(`❌ WhatsApp PHONE_NUMBER_ID missing for payment link`)
-      return false
-    }
-
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
     const normalizedTo = to.replace('@c.us', '');
 
@@ -107,7 +96,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       });
@@ -133,10 +122,6 @@ class WhatsAppService {
    * Send an image message via 2Factor API
    */
   async sendImage(to: string, imageUrl: string, caption?: string): Promise<boolean> {
-    if (!this.phoneNumberId) {
-      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for image')
-      return false
-    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
     const payload = {
@@ -152,10 +137,7 @@ class WhatsAppService {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${this.apiKey}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'api-key': this.apiKey },
         body: JSON.stringify(payload)
       })
       if (!response.ok) throw new Error(`WhatsApp API Error sending image: ${response.status}`)
@@ -177,10 +159,6 @@ class WhatsAppService {
     caption?: string
   ): Promise<boolean> {
     try {
-      if (!this.phoneNumberId) {
-        logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for document')
-        return false
-      }
       const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
       const normalizedTo = to.replace('@c.us', '')
 
@@ -210,7 +188,7 @@ class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       })
@@ -237,10 +215,6 @@ class WhatsAppService {
     header?: string,
     footer?: string
   ): Promise<boolean> {
-    if (!this.phoneNumberId) {
-      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for list message')
-      return false
-    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
 
@@ -262,33 +236,18 @@ class WhatsAppService {
     }
 
     try {
-      logger.debug(`📤 Outgoing WhatsApp List URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
         const err = await response.text()
-        logger.error(`❌ WhatsApp API Error (List): ${response.status} ${err}`)
-        logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
-        
-        // AUTO-FALLBACK: If interactive fails, send as text menu
-        logger.info('🔄 Falling back to text-based menu...')
-        let fallbackText = `${header ? '*' + header + '*\n\n' : ''}${body}\n\n`
-        sections.forEach(sec => {
-          if (sec.title) fallbackText += `*${sec.title}*\n`
-          sec.rows.forEach((row: any, idx: number) => {
-            fallbackText += `${idx + 1}. ${row.title}\n`
-          })
-          fallbackText += '\n'
-        })
-        fallbackText += footer || ''
-        return await this.sendMessage(to, fallbackText)
+        throw new Error(`WhatsApp API Error (List): ${response.status} ${err}`)
       }
       logger.info(`📤 Outgoing Info: List Message sent to ${normalizedTo} | Button: ${buttonText}`)
       return true
@@ -308,10 +267,6 @@ class WhatsAppService {
     header?: string,
     footer?: string
   ): Promise<boolean> {
-    if (!this.phoneNumberId) {
-      logger.error('❌ WhatsApp PHONE_NUMBER_ID is missing for reply buttons')
-      return false
-    }
     const url = `${this.baseUrl}/${this.phoneNumberId}/messages`
     const normalizedTo = to.replace('@c.us', '')
 
@@ -335,28 +290,18 @@ class WhatsAppService {
     }
 
     try {
-      logger.debug(`📤 Outgoing WhatsApp Buttons URL: ${url}`)
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
         const err = await response.text()
-        logger.error(`❌ WhatsApp API Error (Buttons): ${response.status} ${err}`)
-        logger.debug(`❌ Failed Payload: ${JSON.stringify(payload)}`)
-        
-        // FALLBACK to text
-        let fallbackText = `${header ? '*' + header + '*\n\n' : ''}${body}\n\n`
-        buttons.forEach((b, idx) => {
-          fallbackText += `${idx + 1}. ${b.title}\n`
-        })
-        fallbackText += `\n${footer || ''}`
-        return await this.sendMessage(to, fallbackText)
+        throw new Error(`WhatsApp API Error (Buttons): ${response.status} ${err}`)
       }
       logger.info(`📤 Outgoing Info: Reply Buttons sent to ${normalizedTo} | Count: ${buttons.length}`)
       return true
