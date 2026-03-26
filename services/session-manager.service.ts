@@ -760,7 +760,7 @@ class SessionManagerService {
   private startStatusPolling(phoneNumber: string, requestId: number, service: string): void {
     const table      = this.getTableName(service)
     let attempts     = 0
-    const maxAttempts = 20
+    const maxAttempts = 40 // Increased to 160s (40 * 4s) to handle slow portals
 
     const interval = setInterval(async () => {
       attempts++
@@ -780,7 +780,7 @@ class SessionManagerService {
             ]
           )
         } else if (
-          (request && ['failed', 'failed_not_found'].includes(request.status)) ||
+          (request && ['failed', 'failed_not_found', 'failed_portal_error'].includes(request.status)) ||
           attempts >= maxAttempts
         ) {
           clearInterval(interval)
@@ -790,7 +790,7 @@ class SessionManagerService {
       } catch (error) {
         logger.error('Error polling status:', error)
       }
-    }, 3000)
+    }, 4000)
   }
 
   // ── SHARED RABBITMQ PUBLISH ───────────────────────────────────────────────
