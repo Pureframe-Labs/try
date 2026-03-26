@@ -16,6 +16,8 @@ diagRoutes.get('/whatsapp-test', async (c) => {
         { name: "No ID (Base/v19.0/messages)", url: `${baseUrl}/v19.0/messages` },
         { name: "Query Param Auth", url: `${baseUrl}/${phoneNumberId}/messages?access_token=${apiKey}`, noAuthHeader: true },
         { name: "No ID + Query Param", url: `${baseUrl}/messages?access_token=${apiKey}`, noAuthHeader: true },
+        { name: "ApiKey Header", url: `${baseUrl}/${phoneNumberId}/messages`, customHeaders: { 'ApiKey': apiKey }, noAuthHeader: true },
+        { name: "X-API-Key Header", url: `${baseUrl}/${phoneNumberId}/messages`, customHeaders: { 'X-API-Key': apiKey }, noAuthHeader: true },
     ];
 
     const results = [];
@@ -34,6 +36,9 @@ diagRoutes.get('/whatsapp-test', async (c) => {
             const headers: any = { 'Content-Type': 'application/json' };
             if (!test.noAuthHeader) {
                 headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+            if ((test as any).customHeaders) {
+                Object.assign(headers, (test as any).customHeaders);
             }
             
             const resp = await fetch(test.url, {
